@@ -1,0 +1,382 @@
+/// Grand Chess Heritage — main menu.
+/// Brass plaques on walnut: Play vs Computer, Two Players, Settings, Support.
+library;
+
+import 'package:flutter/material.dart';
+import '../services/audio_service.dart';
+import '../services/iap_service.dart';
+import '../services/settings_service.dart';
+import '../theme.dart';
+import '../theme/chess_themes.dart';
+import '../widgets/brass.dart';
+import 'game_screen.dart';
+import 'settings_screen.dart';
+
+class MenuScreen extends StatefulWidget {
+  final ChessAudio audio;
+  final ChessSettings settings;
+  const MenuScreen({super.key, required this.audio, required this.settings});
+
+  @override
+  State<MenuScreen> createState() => _MenuScreenState();
+}
+
+class _MenuScreenState extends State<MenuScreen> {
+  Map<String, dynamic>? _savedGame;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.audio.startMenuMusic();
+    _checkSaved();
+  }
+
+  Future<void> _checkSaved() async {
+    final saved = await GameStore.load();
+    if (saved != null && mounted) {
+      setState(() => _savedGame = saved);
+      _offerResume();
+    }
+  }
+
+  void _offerResume() {
+    final t = ChessThemes.byId(widget.settings.themeId);
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(22),
+          decoration: ChessMaterials.walnutPanel(t, radius: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Resume game?',
+                  style: ChessType.display(t, size: 24)),
+              const SizedBox(height: 8),
+              Text('You have an unfinished game.',
+                  style: ChessType.bodyDim(t)),
+              const SizedBox(height: 18),
+              BrassButton(
+                theme: t,
+                label: 'Resume',
+                onTap: () {
+                  widget.audio.click();
+                  Navigator.pop(context);
+                  _openGame(resume: _savedGame);
+                  setState(() => _savedGame = null);
+                },
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () {
+                  widget.audio.click();
+                  GameStore.clear();
+                  setState(() => _savedGame = null);
+                  Navigator.pop(context);
+                },
+                child: Text('Discard', style: TextStyle(color: t.accent)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openGame({Map<String, dynamic>? resume}) {
+    widget.audio.click();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GameScreen(
+          audio: widget.audio,
+          settings: widget.settings,
+          resume: resume,
+        ),
+      ),
+    ).then((_) {
+      widget.audio.startMenuMusic();
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = widget.settings;
+    final clockLabel = settings.clockSeconds == 0
+        ? 'no clock'
+        : ChessSettings.clockLabels[
+            ChessSettings.clockOptions.indexOf(settings.clockSeconds)];
+    return ListenableBuilder(
+      listenable: settings,
+      builder: (_, _) {
+        final tt = ChessThemes.byId(settings.themeId);
+        return Scaffold(
+          backgroundColor: tt.bg,
+          body: SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // hero: the club emblem
+                    Container(
+                      width: 128,
+                      height: 128,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: tt.accent, width: 2.5),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.6),
+                            offset: const Offset(0, 8),
+                            blurRadius: 20,
+                          ),
+                        ],
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Image.asset('assets/chess_logo.png',
+                          fit: BoxFit.cover),
+                    ),
+                    const SizedBox(height: 14),
+                    Text('CHESS', style: ChessType.display(tt, size: 44)),
+                    const SizedBox(height: 4),
+                    Text(
+                      'The royal game, in marble & brass',
+                      style: ChessType.bodyDim(tt),
+                    ),
+                    const SizedBox(height: 10),
+                    // lifetime score plaque
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: tt.surface,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: tt.line, width: 1),
+                      ),
+                      child: Text(
+                        'Club record  ${settings.wins} W · ${settings.losses} L · ${settings.draws} D',
+                        style: ChessType.moveNotation(tt).copyWith(
+                            color: tt.accent, fontSize: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 26),
+                    BrassButton(
+                      theme: tt,
+                      label: 'Play vs Computer',
+                      icon: Icons.computer,
+                      onTap: () {
+                        settings.setMode(0);
+                        _openGame();
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    BrassButton(
+                      theme: tt,
+                      label: 'Two Players',
+                      icon: Icons.people,
+                      onTap: () {
+                        settings.setMode(1);
+                        _openGame();
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    BrassButton(
+                      theme: tt,
+                      label: 'Settings',
+                      icon: Icons.settings,
+                      onTap: () async {
+                        widget.audio.click();
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => SettingsScreen(
+                              audio: widget.audio,
+                              settings: settings,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    // mode summary chips
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _chip(tt,
+                            '${ChessSettings.difficultyLabels[settings.difficulty]} bot'),
+                        _chip(tt,
+                            settings.botPlaysWhite ? 'You play Black' : 'You play White'),
+                        _chip(tt, clockLabel),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    TextButton.icon(
+                      onPressed: () {
+                        widget.audio.click();
+                        _supportDialog(tt);
+                      },
+                      icon: Icon(Icons.coffee,
+                          color: tt.accent, size: 18),
+                      label: Text(
+                        'Support the club',
+                        style: TextStyle(color: tt.accent, fontSize: 14),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'v2.0 · 100% free · by Wajiha',
+                      style: ChessType.bodyDim(tt).copyWith(fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _chip(ChessThemeDef t, String label) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: t.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: t.line),
+        ),
+        child: Text(label,
+            style: ChessType.bodyDim(t).copyWith(fontSize: 11)),
+      );
+
+  void _supportDialog(ChessThemeDef t) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(22),
+          decoration: ChessMaterials.walnutPanel(t, radius: 16),
+          child: TipJarCard(
+            audio: widget.audio,
+            theme: t,
+            onClose: () => Navigator.pop(ctx),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Tasteful tip-jar card: coffee / chocolate products, or a graceful
+/// "not configured yet" note when Play Console products are missing.
+/// Owns its TipJar instance.
+class TipJarCard extends StatefulWidget {
+  final ChessAudio audio;
+  final ChessThemeDef theme;
+  final VoidCallback onClose;
+  const TipJarCard({
+    super.key,
+    required this.audio,
+    required this.theme,
+    required this.onClose,
+  });
+
+  @override
+  State<TipJarCard> createState() => _TipJarCardState();
+}
+
+class _TipJarCardState extends State<TipJarCard> {
+  late final TipJar _jar = TipJar();
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _jar.init().then((_) {
+      if (mounted) setState(() => _loading = false);
+    });
+    _jar.lastThanks.addListener(_thanks);
+  }
+
+  void _thanks() {
+    final msg = _jar.lastThanks.value;
+    if (msg != null && mounted) {
+      _jar.lastThanks.value = null;
+      widget.audio.win();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _jar.lastThanks.removeListener(_thanks);
+    _jar.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = widget.theme;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('Support the club',
+            style: ChessType.display(t, size: 24)),
+        const SizedBox(height: 8),
+        Text(
+          'Chess is 100% free. If the club has given you good games, '
+          'a coffee keeps the lamps lit.',
+          style: ChessType.bodyDim(t),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 16),
+        if (_loading)
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: CircularProgressIndicator(),
+          )
+        else if (_jar.products.isEmpty)
+          Text(
+            _jar.error ?? 'Tip jar coming soon.',
+            style: ChessType.bodyDim(t),
+            textAlign: TextAlign.center,
+          )
+        else
+          for (final p in _jar.products)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: BrassButton(
+                theme: t,
+                width: 240,
+                fontSize: 15,
+                icon: p.id == TipJar.chocolateId
+                    ? Icons.cookie
+                    : Icons.coffee,
+                label: '${p.title} · ${p.price}',
+                onTap: () {
+                  widget.audio.click();
+                  _jar.buy(p);
+                },
+              ),
+            ),
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: () {
+            widget.audio.click();
+            widget.onClose();
+          },
+          child: Text('Close', style: TextStyle(color: t.accent)),
+        ),
+      ],
+    );
+  }
+}

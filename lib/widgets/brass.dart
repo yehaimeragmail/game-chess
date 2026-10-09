@@ -1,14 +1,16 @@
 /// Brass plaque controls — the physical button language of Grand Chess Heritage.
+/// Theme-aware; audio clicks are played by the owning screen, not the widget.
 library;
 
 import 'package:flutter/material.dart';
 import '../theme.dart';
-import '../audio.dart';
+import '../theme/chess_themes.dart';
 
-/// A cold brushed-brass plaque button with engraved serif text.
+/// A cold brushed-metal plaque button with engraved serif text.
 class BrassButton extends StatefulWidget {
   final String label;
   final VoidCallback onTap;
+  final ChessThemeDef theme;
   final double width;
   final double fontSize;
   final IconData? icon;
@@ -17,6 +19,7 @@ class BrassButton extends StatefulWidget {
     super.key,
     required this.label,
     required this.onTap,
+    required this.theme,
     this.width = 260,
     this.fontSize = 17,
     this.icon,
@@ -31,54 +34,49 @@ class _BrassButtonState extends State<BrassButton> {
 
   @override
   Widget build(BuildContext context) {
+    final t = widget.theme;
     return GestureDetector(
       onTapDown: (_) => setState(() => _pressed = true),
       onTapUp: (_) => setState(() => _pressed = false),
       onTapCancel: () => setState(() => _pressed = false),
-      onTap: () {
-        AudioService.I.click();
-        widget.onTap();
-      },
+      onTap: widget.onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 90),
         width: widget.width,
         padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 18),
-        decoration: ChessMaterials.brassPlaque(pressed: _pressed),
+        decoration: ChessMaterials.brassPlaque(t, pressed: _pressed),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // screw rivets
-            _rivet(),
+            _rivet(t),
             const SizedBox(width: 10),
             if (widget.icon != null) ...[
-              Icon(widget.icon, color: ChessPalette.onBrass, size: 20),
+              Icon(widget.icon, color: t.onAccent, size: 20),
               const SizedBox(width: 8),
             ],
             Flexible(
               child: Text(
                 widget.label.toUpperCase(),
                 textAlign: TextAlign.center,
-                style: ChessType.plaqueTitle(context).copyWith(
-                  fontSize: widget.fontSize,
-                ),
+                style: ChessType.plaqueTitle(t, size: widget.fontSize),
               ),
             ),
             const SizedBox(width: 10),
-            _rivet(),
+            _rivet(t),
           ],
         ),
       ),
     );
   }
 
-  Widget _rivet() => Container(
+  Widget _rivet(ChessThemeDef t) => Container(
         width: 7,
         height: 7,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: const RadialGradient(
-            colors: [Color(0xFFf7e3ae), Color(0xFF8a6d35)],
+          gradient: RadialGradient(
+            colors: [t.accentLight, t.accentDark],
           ),
           boxShadow: const [
             BoxShadow(color: Colors.black54, blurRadius: 2, offset: Offset(0, 1)),
@@ -91,29 +89,41 @@ class _BrassButtonState extends State<BrassButton> {
 class BrassIconButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
+  final ChessThemeDef theme;
   final String? tooltip;
+  final bool highlighted;
 
   const BrassIconButton({
     super.key,
     required this.icon,
     required this.onTap,
+    required this.theme,
     this.tooltip,
+    this.highlighted = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final t = theme;
     return Tooltip(
       message: tooltip ?? '',
       child: GestureDetector(
-        onTap: () {
-          AudioService.I.click();
-          onTap();
-        },
+        onTap: onTap,
         child: Container(
-          width: 46,
-          height: 46,
-          decoration: ChessMaterials.brassPlaque(radius: 10),
-          child: Icon(icon, color: ChessPalette.onBrass, size: 22),
+          width: 44,
+          height: 44,
+          decoration: highlighted
+              ? ChessMaterials.brassPlaque(t, radius: 10).copyWith(
+                  boxShadow: [
+                    BoxShadow(
+                      color: t.selGold.withValues(alpha: 0.7),
+                      blurRadius: 8,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                )
+              : ChessMaterials.brassPlaque(t, radius: 10),
+          child: Icon(icon, color: t.onAccent, size: 22),
         ),
       ),
     );
@@ -123,11 +133,13 @@ class BrassIconButton extends StatelessWidget {
 /// Walnut panel card for grouping content.
 class WalnutCard extends StatelessWidget {
   final Widget child;
+  final ChessThemeDef theme;
   final EdgeInsets padding;
 
   const WalnutCard({
     super.key,
     required this.child,
+    required this.theme,
     this.padding = const EdgeInsets.all(18),
   });
 
@@ -135,7 +147,7 @@ class WalnutCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: padding,
-      decoration: ChessMaterials.walnutPanel(),
+      decoration: ChessMaterials.walnutPanel(theme),
       child: child,
     );
   }
@@ -145,16 +157,19 @@ class WalnutCard extends StatelessWidget {
 class BrassToggle extends StatelessWidget {
   final bool value;
   final ValueChanged<bool> onChanged;
+  final ChessThemeDef theme;
 
-  const BrassToggle({super.key, required this.value, required this.onChanged});
+  const BrassToggle(
+      {super.key,
+      required this.value,
+      required this.onChanged,
+      required this.theme});
 
   @override
   Widget build(BuildContext context) {
+    final t = theme;
     return GestureDetector(
-      onTap: () {
-        AudioService.I.click();
-        onChanged(!value);
-      },
+      onTap: () => onChanged(!value),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         width: 58,
@@ -163,10 +178,10 @@ class BrassToggle extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           gradient: LinearGradient(
             colors: value
-                ? [ChessPalette.brass, ChessPalette.brassAged]
-                : [const Color(0xFF2a2118), const Color(0xFF1a140d)],
+                ? [t.accentLight, t.accent, t.accentDark]
+                : [t.surfaceRaised, t.surface],
           ),
-          border: Border.all(color: const Color(0xFF8a6d35), width: 1.5),
+          border: Border.all(color: t.accentDark, width: 1.5),
           boxShadow: const [
             BoxShadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 3)),
           ],
@@ -180,8 +195,8 @@ class BrassToggle extends StatelessWidget {
             margin: const EdgeInsets.all(3),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: const RadialGradient(
-                colors: [Color(0xFFf7e3ae), Color(0xFFc5a059)],
+              gradient: RadialGradient(
+                colors: [t.accentLight, t.accentDark],
               ),
               boxShadow: const [
                 BoxShadow(color: Colors.black54, blurRadius: 3, offset: Offset(0, 2)),
