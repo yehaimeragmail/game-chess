@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:chess/game_screen.dart';
+import 'package:chess/engine.dart';
 
 List<int> _empty() => List.filled(64, 0);
 
