@@ -61,6 +61,12 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     } else {
       match.newGame();
     }
+    // A resumed snapshot carries the names from when it was saved; point the
+    // match at the latest persisted names so narration never goes stale.
+    match.refreshNames(
+      white: s.playerNames[0],
+      black: s.playerNames[1],
+    );
     widget.audio.startGameMusic();
   }
 
@@ -345,7 +351,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 onSubmitted: (_) {
                   widget.settings
                       .setPlayerName(slot, ctrl.text)
-                      .then((_) => setState(() {}));
+                      .then((_) => _afterRename());
                   Navigator.pop(context);
                 },
               ),
@@ -357,7 +363,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                   widget.audio.click();
                   widget.settings
                       .setPlayerName(slot, ctrl.text)
-                      .then((_) => setState(() {}));
+                      .then((_) => _afterRename());
                   Navigator.pop(context);
                 },
               ),
@@ -366,6 +372,17 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+
+  /// Called after an in-game rename: persist, refresh the match's live
+  /// names (narration/banners/results), and repaint the side panels.
+  void _afterRename() {
+    final s = widget.settings;
+    match.refreshNames(
+      white: s.playerNames[0],
+      black: s.playerNames[1],
+    );
+    if (mounted) setState(() {});
   }
 
   void _showHistory() {
@@ -801,6 +818,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     return GestureDetector(
       onTap: () => match.tapSquare(s),
       child: Container(
+        // NOTE: the highlight is an overlay below (not BoxDecoration.color),
+        // because a decoration color paints UNDER the square gradient and
+        // would be invisible.
         decoration: (light
                 ? ChessMaterials.squareLight(tt)
                 : ChessMaterials.squareDark(tt))
@@ -808,15 +828,17 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
           border: kingSq
               ? Border.all(color: tt.checkRed, width: 3)
               : null,
-          color: isLast
-              ? tt.lastMove.withValues(alpha: 0.45)
-              : isSel
-                  ? tt.selGold.withValues(alpha: 0.5)
-                  : null,
         ),
         child: Stack(
           alignment: Alignment.center,
           children: [
+            if (isLast || isSel)
+              Positioned.fill(
+                child: Container(
+                  color: (isLast ? tt.lastMove : tt.selGold)
+                      .withValues(alpha: isLast ? 0.45 : 0.5),
+                ),
+              ),
             if (p != 0)
               CarvedPiece(
                 piece: p,

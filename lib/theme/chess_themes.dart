@@ -430,6 +430,16 @@ class ChessThemes {
 
   static ChessThemeDef byId(String id) =>
       all.firstWhere((t) => t.id == id, orElse: () => all.first);
+
+  /// Free tier: the first 4 heritage boards. The remaining 8 are the PRO set.
+  static const Set<String> freeThemeIds = {
+    'heritage',
+    'mahogany',
+    'ebony_ivory',
+    'midnight',
+  };
+
+  static bool isProTheme(String id) => !freeThemeIds.contains(id);
 }
 
 /// Piece styles. 0 = Classic Carved, 1 = Modern Minimal, 2 = Ornate Royal.

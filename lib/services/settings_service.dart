@@ -8,6 +8,7 @@ library;
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../theme/chess_themes.dart';
 
 class ChessSettings extends ChangeNotifier {
   static const _kMusic = 'chess_music_on';
@@ -17,12 +18,18 @@ class ChessSettings extends ChangeNotifier {
   static const _kMode = 'chess_mode'; // 0 vs bot, 1 two players
   static const _kBotWhite = 'chess_bot_plays_white';
   static const _kClock = 'chess_clock_seconds'; // 0 off, else 60/180/300/600
-  static const _kNames = 'chess_player_names'; // StringList [white, black]
+  static const _kNames =
+      'chess_player_names_json'; // JSON string [white, black].
+  // NOTE: player names used to be stored with setStringList, but on Android
+  // SharedPreferences string lists are backed by an UNORDERED StringSet —
+  // White/Black names came back scrambled across slots after a restart.
+  // Names are now persisted as an order-preserving JSON string.
   static const _kTheme = 'chess_theme_id';
   static const _kPieceStyle = 'chess_piece_style'; // 0 classic, 1 modern, 2 ornate
   static const _kWins = 'chess_wins';
   static const _kLosses = 'chess_losses';
   static const _kDraws = 'chess_draws';
+  static const _kIsPro = 'chess_is_pro';
 
   static const defaultNames = ['White', 'Black'];
 
@@ -48,6 +55,7 @@ class ChessSettings extends ChangeNotifier {
   int wins = 0;
   int losses = 0;
   int draws = 0;
+  bool isPro = false;
 
   SharedPreferences? _prefs;
 
@@ -62,18 +70,40 @@ class ChessSettings extends ChangeNotifier {
     botPlaysWhite = p.getBool(_kBotWhite) ?? false;
     clockSeconds = p.getInt(_kClock) ?? 0;
     if (!clockOptions.contains(clockSeconds)) clockSeconds = 0;
-    final names = p.getStringList(_kNames);
-    if (names != null && names.length == 2) {
-      playerNames = [
-        for (int i = 0; i < 2; i++)
-          names[i].trim().isEmpty ? defaultNames[i] : names[i].trim()
-      ];
+    final rawNames = p.getString(_kNames);
+    if (rawNames != null) {
+      try {
+        final names = (jsonDecode(rawNames) as List)
+            .map((e) => e.toString())
+            .toList();
+        if (names.length == 2) {
+          playerNames = [
+            for (int i = 0; i < 2; i++)
+              names[i].trim().isEmpty ? defaultNames[i] : names[i].trim()
+          ];
+        }
+      } catch (_) {
+        // Corrupt entry — keep defaults.
+      }
+    } else {
+      // One-time migration from the old unordered StringList storage.
+      final legacy = p.getStringList('chess_player_names');
+      if (legacy != null && legacy.length == 2) {
+        playerNames = [
+          for (int i = 0; i < 2; i++)
+            legacy[i].trim().isEmpty ? defaultNames[i] : legacy[i].trim()
+        ];
+        await p.remove('chess_player_names');
+        await p.setString(_kNames, jsonEncode(playerNames));
+      }
     }
     themeId = p.getString(_kTheme) ?? 'heritage';
     pieceStyle = (p.getInt(_kPieceStyle) ?? 0).clamp(0, 2);
     wins = p.getInt(_kWins) ?? 0;
     losses = p.getInt(_kLosses) ?? 0;
     draws = p.getInt(_kDraws) ?? 0;
+    isPro = p.getBool(_kIsPro) ?? false;
+    _enforceFreeLimits(silent: true);
     notifyListeners();
   }
 
@@ -87,12 +117,43 @@ class ChessSettings extends ChangeNotifier {
     await p.setInt(_kMode, mode);
     await p.setBool(_kBotWhite, botPlaysWhite);
     await p.setInt(_kClock, clockSeconds);
-    await p.setStringList(_kNames, playerNames);
+    await p.setString(_kNames, jsonEncode(playerNames));
     await p.setString(_kTheme, themeId);
     await p.setInt(_kPieceStyle, pieceStyle);
     await p.setInt(_kWins, wins);
     await p.setInt(_kLosses, losses);
     await p.setInt(_kDraws, draws);
+    await p.setBool(_kIsPro, isPro);
+  }
+
+  /// Free-tier limits: clamp pro-only choices back when not Pro.
+  /// Called after load and whenever Pro status could have changed.
+  void _enforceFreeLimits({bool silent = false}) {
+    if (isPro) return;
+    var changed = false;
+    if (ChessThemes.isProTheme(themeId)) {
+      themeId = 'heritage';
+      changed = true;
+    }
+    if (pieceStyle > 0) {
+      pieceStyle = 0;
+      changed = true;
+    }
+    if (difficulty > 1) {
+      difficulty = 1;
+      changed = true;
+    }
+    if (changed) {
+      if (!silent) notifyListeners();
+      _save();
+    }
+  }
+
+  Future<void> setPro(bool v) async {
+    isPro = v;
+    if (!v) _enforceFreeLimits();
+    notifyListeners();
+    await _save();
   }
 
   Future<void> setMusic(bool v) async {
@@ -114,7 +175,11 @@ class ChessSettings extends ChangeNotifier {
   }
 
   Future<void> setDifficulty(int v) async {
-    difficulty = v.clamp(0, 2);
+    v = v.clamp(0, 2);
+    // Grandmaster (2) is a PRO difficulty; the UI routes free users to the
+    // PRO screen, this clamp is the backstop.
+    if (!isPro && v > 1) v = 1;
+    difficulty = v;
     notifyListeners();
     await _save();
   }
@@ -148,13 +213,18 @@ class ChessSettings extends ChangeNotifier {
   }
 
   Future<void> setTheme(String id) async {
+    // Pro-only themes require Pro; silently ignore otherwise (UI shows lock).
+    if (!isPro && ChessThemes.isProTheme(id)) return;
     themeId = id;
     notifyListeners();
     await _save();
   }
 
   Future<void> setPieceStyle(int v) async {
-    pieceStyle = v.clamp(0, 2);
+    v = v.clamp(0, 2);
+    // Styles 1-2 (Modern Minimal, Ornate Royal) are PRO; UI shows the lock.
+    if (!isPro && v > 0) return;
+    pieceStyle = v;
     notifyListeners();
     await _save();
   }

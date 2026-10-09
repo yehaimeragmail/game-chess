@@ -163,7 +163,32 @@ class ChessMatch extends ChangeNotifier {
   bool get vsBot => config.vsBot;
   bool get clocksOn => config.clockSeconds > 0;
 
-  String nameOf(bool white) => white ? config.whiteName : config.blackName;
+  /// Live name overrides, refreshed from ChessSettings after renames.
+  /// MatchConfig freezes names at game start; these keep narration, banners
+  /// and result headlines showing the CURRENT names ("Aisha plays Nf3")
+  /// even when the player renames mid-game or after a saved-game resume.
+  String? _whiteNameLive;
+  String? _blackNameLive;
+
+  String nameOf(bool white) => white
+      ? (_whiteNameLive ?? config.whiteName)
+      : (_blackNameLive ?? config.blackName);
+
+  /// Point the match at the latest persisted names. Safe to call any time;
+  /// turn/thinking banners showing stale names are refreshed in place.
+  void refreshNames({required String white, required String black}) {
+    final staleTurn = _turnBanner();
+    final staleThinking = '$_botName is thinking…';
+    final staleUp = '$_botName is up…';
+    _whiteNameLive = white;
+    _blackNameLive = black;
+    if (banner == staleTurn ||
+        banner == staleThinking ||
+        banner == staleUp) {
+      banner = _turnBanner();
+    }
+    notifyListeners();
+  }
 
   bool _botToMove() =>
       vsBot && !over && eng.whiteTurn != config.humanIsWhite;
@@ -354,7 +379,8 @@ class ChessMatch extends ChangeNotifier {
           notifyListeners();
           return;
         }
-        _applyMove(cands.first, moverLabel: 'You play');
+        _applyMove(cands.first,
+            moverLabel: '${nameOf(eng.whiteTurn)} plays');
         return;
       }
     }
@@ -383,7 +409,8 @@ class ChessMatch extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    _applyMove(cands.first, moverLabel: 'You play');
+    _applyMove(cands.first,
+        moverLabel: '${nameOf(eng.whiteTurn)} plays');
   }
 
   void cancelPromotion() {

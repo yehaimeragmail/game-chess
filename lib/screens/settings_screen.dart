@@ -11,6 +11,7 @@ import '../theme/chess_themes.dart';
 import '../widgets/brass.dart';
 import '../widgets/piece.dart';
 import 'menu_screen.dart' show TipJarCard;
+import 'pro_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final ChessAudio audio;
@@ -54,6 +55,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: ListView(
               padding: const EdgeInsets.all(18),
               children: [
+                if (!s.isPro) _proBanner(tt),
+                if (!s.isPro) const SizedBox(height: 16),
                 _sectionTitle(tt, 'Bot difficulty'),
                 const SizedBox(height: 8),
                 for (int d = 0; d < 3; d++)
@@ -205,11 +208,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
 
+  void _openPro() {
+    _click();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ProScreen(
+          audio: widget.audio,
+          settings: widget.settings,
+        ),
+      ),
+    );
+  }
+
+  Widget _proBanner(ChessThemeDef tt) {
+    return GestureDetector(
+      onTap: _openPro,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: ChessMaterials.brassPlaque(tt, radius: 10),
+        child: Row(
+          children: [
+            Icon(Icons.workspace_premium,
+                color: tt.onAccent, size: 30),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Chess PRO',
+                      style: ChessType.plaqueTitle(tt, size: 16)),
+                  const SizedBox(height: 2),
+                  Text(
+                    '8 more boards · 2 more piece styles · Grandmaster bot',
+                    style: TextStyle(color: tt.onAccent, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios,
+                color: tt.onAccent, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _difficultyPlaque(ChessThemeDef tt, int d) {
     final s = widget.settings;
     final selected = s.difficulty == d;
+    final locked = !s.isPro && d == 2; // Grandmaster is PRO
     return GestureDetector(
       onTap: () {
+        if (locked) {
+          _openPro();
+          return;
+        }
         _click();
         s.setDifficulty(d);
       },
@@ -225,16 +279,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    ChessSettings.difficultyLabels[d],
-                    style: selected
-                        ? ChessType.plaqueTitle(tt, size: 16)
-                        : ChessType.body(tt)
-                            .copyWith(fontWeight: FontWeight.bold),
+                  Row(
+                    children: [
+                      Text(
+                        ChessSettings.difficultyLabels[d],
+                        style: selected
+                            ? ChessType.plaqueTitle(tt, size: 16)
+                            : ChessType.body(tt)
+                                .copyWith(fontWeight: FontWeight.bold),
+                      ),
+                      if (locked) ...[
+                        const SizedBox(width: 8),
+                        _lockBadge(tt),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    ChessSettings.difficultyBlurbs[d],
+                    locked
+                        ? 'PRO only — unlock the merciless Grandmaster.'
+                        : ChessSettings.difficultyBlurbs[d],
                     style: selected
                         ? TextStyle(color: tt.onAccent, fontSize: 12)
                         : ChessType.bodyDim(tt),
@@ -331,8 +395,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       itemBuilder: (_, i) {
         final th = ChessThemes.all[i];
         final selected = s.themeId == th.id;
+        final locked = !s.isPro && ChessThemes.isProTheme(th.id);
         return GestureDetector(
           onTap: () {
+            if (locked) {
+              _openPro();
+              return;
+            }
             _click();
             s.setTheme(th.id);
           },
@@ -353,41 +422,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   : null,
             ),
             clipBehavior: Clip.antiAlias,
-            child: Column(
+            child: Stack(
               children: [
-                Expanded(
-                  child: GridView.builder(
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 4),
-                    itemCount: 16,
-                    itemBuilder: (_, q) {
-                      final light = (q ~/ 4 + q % 4) % 2 == 1;
-                      return Container(
-                        color: light ? th.sqLight : th.sqDark,
-                      );
-                    },
-                  ),
-                ),
-                Container(
-                  width: double.infinity,
-                  color: th.surface,
-                  padding: const EdgeInsets.symmetric(vertical: 5),
-                  child: Text(
-                    th.name,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: selected ? th.accent : th.ivoryDim,
-                      fontSize: 10,
-                      fontWeight: selected
-                          ? FontWeight.bold
-                          : FontWeight.normal,
+                Column(
+                  children: [
+                    Expanded(
+                      child: GridView.builder(
+                        physics:
+                            const NeverScrollableScrollPhysics(),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 4),
+                        itemCount: 16,
+                        itemBuilder: (_, q) {
+                          final light =
+                              (q ~/ 4 + q % 4) % 2 == 1;
+                          return Container(
+                            color: light ? th.sqLight : th.sqDark,
+                          );
+                        },
+                      ),
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                    Container(
+                      width: double.infinity,
+                      color: th.surface,
+                      padding:
+                          const EdgeInsets.symmetric(vertical: 5),
+                      child: Text(
+                        th.name,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: selected
+                              ? th.accent
+                              : th.ivoryDim,
+                          fontSize: 10,
+                          fontWeight: selected
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
+                if (locked)
+                  Positioned.fill(
+                    child: Container(
+                      color: Colors.black.withValues(alpha: 0.45),
+                      alignment: Alignment.center,
+                      child: Icon(Icons.lock,
+                          color: th.accent, size: 26),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -399,8 +486,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _pieceStylePlaque(ChessThemeDef tt, int i) {
     final s = widget.settings;
     final selected = s.pieceStyle == i;
+    final locked = !s.isPro && i > 0; // styles 1-2 are PRO
     return GestureDetector(
       onTap: () {
+        if (locked) {
+          _openPro();
+          return;
+        }
         _click();
         s.setPieceStyle(i);
       },
@@ -422,16 +514,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    PieceStyles.names[i],
-                    style: selected
-                        ? ChessType.plaqueTitle(tt, size: 15)
-                        : ChessType.body(tt)
-                            .copyWith(fontWeight: FontWeight.bold),
+                  Row(
+                    children: [
+                      Text(
+                        PieceStyles.names[i],
+                        style: selected
+                            ? ChessType.plaqueTitle(tt, size: 15)
+                            : ChessType.body(tt)
+                                .copyWith(fontWeight: FontWeight.bold),
+                      ),
+                      if (locked) ...[
+                        const SizedBox(width: 8),
+                        _lockBadge(tt),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    PieceStyles.descriptions[i],
+                    locked
+                        ? 'PRO only — unlock this atelier style.'
+                        : PieceStyles.descriptions[i],
                     style: selected
                         ? TextStyle(color: tt.onAccent, fontSize: 12)
                         : ChessType.bodyDim(tt),
@@ -439,13 +541,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
             ),
-            if (selected)
+            if (locked)
+              Icon(Icons.lock, color: tt.accent, size: 22)
+            else if (selected)
               Icon(Icons.check_circle, color: tt.onAccent, size: 24),
           ],
         ),
       ),
     );
   }
+
+  /// Small "PRO" lock badge shown next to locked options.
+  Widget _lockBadge(ChessThemeDef tt) => Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          color: tt.accent.withValues(alpha: 0.25),
+          border: Border.all(color: tt.accent, width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.lock, size: 10, color: tt.accent),
+            const SizedBox(width: 4),
+            Text('PRO',
+                style: TextStyle(
+                    color: tt.accent,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.2)),
+          ],
+        ),
+      );
 
   Widget _toggleRow(ChessThemeDef tt, String title, String sub, bool value,
       ValueChanged<bool> onChanged) {

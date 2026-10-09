@@ -3,6 +3,9 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:in_app_review/in_app_review.dart';
 import '../services/audio_service.dart';
 import '../services/iap_service.dart';
 import '../services/settings_service.dart';
@@ -10,6 +13,7 @@ import '../theme.dart';
 import '../theme/chess_themes.dart';
 import '../widgets/brass.dart';
 import 'game_screen.dart';
+import 'pro_screen.dart';
 import 'settings_screen.dart';
 
 class MenuScreen extends StatefulWidget {
@@ -202,6 +206,24 @@ class _MenuScreenState extends State<MenuScreen> {
                         );
                       },
                     ),
+                    const SizedBox(height: 12),
+                    BrassButton(
+                      theme: tt,
+                      label: settings.isPro ? 'Chess PRO ✓' : 'Chess PRO',
+                      icon: Icons.workspace_premium,
+                      onTap: () {
+                        widget.audio.click();
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ProScreen(
+                              audio: widget.audio,
+                              settings: settings,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                     const SizedBox(height: 16),
                     // mode summary chips
                     Wrap(
@@ -217,6 +239,26 @@ class _MenuScreenState extends State<MenuScreen> {
                       ],
                     ),
                     const SizedBox(height: 20),
+                    // share + rate row
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _menuMiniButton(
+                          tt,
+                          icon: Icons.share,
+                          label: 'Share',
+                          onTap: _shareGame,
+                        ),
+                        const SizedBox(width: 12),
+                        _menuMiniButton(
+                          tt,
+                          icon: Icons.star,
+                          label: 'Rate',
+                          onTap: _rateGame,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
                     TextButton.icon(
                       onPressed: () {
                         widget.audio.click();
@@ -231,7 +273,9 @@ class _MenuScreenState extends State<MenuScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'v2.0 · 100% free · by Wajiha',
+                      settings.isPro
+                          ? '✦ PRO · by Wajiha'
+                          : 'Free forever · by Wajiha',
                       style: ChessType.bodyDim(tt).copyWith(fontSize: 11),
                     ),
                   ],
@@ -255,6 +299,61 @@ class _MenuScreenState extends State<MenuScreen> {
             style: ChessType.bodyDim(t).copyWith(fontSize: 11)),
       );
 
+  Widget _menuMiniButton(
+    ChessThemeDef t, {
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        decoration: BoxDecoration(
+          color: t.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: t.line, width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: t.accent, size: 16),
+            const SizedBox(width: 8),
+            Text(label,
+                style: ChessType.bodyDim(t).copyWith(fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Real share sheet: invite a friend to play Chess.
+  Future<void> _shareGame() async {
+    widget.audio.click();
+    await Share.share(
+        'Play Chess with me! https://play.google.com/store/apps/details?id=com.gameswajiha.chess');
+  }
+
+  /// Real in-app review flow, with a store-listing fallback when the
+  /// review dialog is unavailable on this device.
+  Future<void> _rateGame() async {
+    widget.audio.click();
+    final review = InAppReview.instance;
+    try {
+      if (await review.isAvailable()) {
+        await review.requestReview();
+      } else {
+        await review.openStoreListing(appStoreId: null);
+      }
+    } catch (_) {
+      // Last resort: open the Play Store listing directly.
+      try {
+        await review.openStoreListing(appStoreId: null);
+      } catch (_) {}
+    }
+  }
+
   void _supportDialog(ChessThemeDef t) {
     showDialog(
       context: context,
@@ -276,7 +375,7 @@ class _MenuScreenState extends State<MenuScreen> {
 
 /// Tasteful tip-jar card: coffee / chocolate products, or a graceful
 /// "not configured yet" note when Play Console products are missing.
-/// Owns its TipJar instance.
+/// Owns its StoreService instance.
 class TipJarCard extends StatefulWidget {
   final ChessAudio audio;
   final ChessThemeDef theme;
@@ -293,22 +392,22 @@ class TipJarCard extends StatefulWidget {
 }
 
 class _TipJarCardState extends State<TipJarCard> {
-  late final TipJar _jar = TipJar();
+  late final StoreService _store = StoreService();
   bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _jar.init().then((_) {
+    _store.init().then((_) {
       if (mounted) setState(() => _loading = false);
     });
-    _jar.lastThanks.addListener(_thanks);
+    _store.lastThanks.addListener(_thanks);
   }
 
   void _thanks() {
-    final msg = _jar.lastThanks.value;
+    final msg = _store.lastThanks.value;
     if (msg != null && mounted) {
-      _jar.lastThanks.value = null;
+      _store.lastThanks.value = null;
       widget.audio.win();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
@@ -318,14 +417,18 @@ class _TipJarCardState extends State<TipJarCard> {
 
   @override
   void dispose() {
-    _jar.lastThanks.removeListener(_thanks);
-    _jar.dispose();
+    _store.lastThanks.removeListener(_thanks);
+    _store.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final t = widget.theme;
+    final tips = [
+      _store.coffeeProduct,
+      _store.chocolateProduct,
+    ].whereType<ProductDetails>().toList();
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -333,7 +436,7 @@ class _TipJarCardState extends State<TipJarCard> {
             style: ChessType.display(t, size: 24)),
         const SizedBox(height: 8),
         Text(
-          'Chess is 100% free. If the club has given you good games, '
+          'Chess is free forever. If the club has given you good games, '
           'a coffee keeps the lamps lit.',
           style: ChessType.bodyDim(t),
           textAlign: TextAlign.center,
@@ -344,27 +447,27 @@ class _TipJarCardState extends State<TipJarCard> {
             padding: EdgeInsets.all(16),
             child: CircularProgressIndicator(),
           )
-        else if (_jar.products.isEmpty)
+        else if (!_store.storeReady)
           Text(
-            _jar.error ?? 'Tip jar coming soon.',
+            _store.error ?? 'Tip jar coming soon.',
             style: ChessType.bodyDim(t),
             textAlign: TextAlign.center,
           )
         else
-          for (final p in _jar.products)
+          for (final p in tips)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: BrassButton(
                 theme: t,
                 width: 240,
                 fontSize: 15,
-                icon: p.id == TipJar.chocolateId
+                icon: p.id == StoreService.chocolateId
                     ? Icons.cookie
                     : Icons.coffee,
                 label: '${p.title} · ${p.price}',
                 onTap: () {
                   widget.audio.click();
-                  _jar.buy(p);
+                  _store.buyTip(p);
                 },
               ),
             ),
