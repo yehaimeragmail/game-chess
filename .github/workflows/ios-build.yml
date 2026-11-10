@@ -1,0 +1,316 @@
+# Signed iOS build — shared workflow for all 100 board games (Ludo pilot first)
+#
+# WHAT IT DOES
+#   Builds a SIGNED .ipa on a macOS runner using the ONE shared Apple
+#   Distribution certificate (.p12) + the per-game App Store provisioning
+#   profile. The App Store Connect API key (.p8) is installed so Xcode /
+#   App Store Connect tooling can authenticate; the profile is the primary
+#   signing route (manual signing). No secrets are ever printed.
+#
+# REQUIRED GITHUB SECRETS (same names in every game repo):
+#   APPLE_DISTRIBUTION_CER          base64 of the shared distribution .cer (one cert, all games)
+#   APPLE_DISTRIBUTION_KEY          base64 of the private key PEM matching that .cer
+#   APPLE_DISTRIBUTION_P12_PASSWORD password Wajiha chooses for the .p12 the runner builds
+#   APPLE_PROVISIONING_PROFILE      base64 of THIS game's App Store .mobileprovision
+#   APP_STORE_CONNECT_API_KEY_ID    Key ID of the App Store Connect API key
+#   APP_STORE_CONNECT_API_KEY_P8    base64 of the AuthKey .p8 file
+#   APP_STORE_CONNECT_ISSUER_ID     Issuer ID of the API key
+# The .p12 is BUILT ON THE RUNNER from the .cer + private key + password
+# (openssl pkcs12 -export) — it is never made in a browser and the password
+# is typed by Wajiha directly into the GitHub secret, so Muse never sees it.
+# The old APPLE_DISTRIBUTION_P12 secret is no longer used.
+# If ANY secret is missing the job FAILS LOUDLY in the first step, naming
+# only the secret NAME (never a value).
+#
+# WHY MANUAL SIGNING WITH xcodebuild OVERRIDES
+#   The Flutter Xcode projects ship with CODE_SIGN_STYLE = Automatic and no
+#   DEVELOPMENT_TEAM set, so `flutter build ipa` alone cannot sign them.
+#   This workflow therefore runs `flutter build ios --release --no-codesign`
+#   (to generate the Flutter artefacts) and then signs explicitly with
+#   `xcodebuild archive` + `xcodebuild -exportArchive`, passing the team,
+#   identity and profile as command-line overrides. Team ID, profile name
+#   and Bundle ID are all read from the decoded provisioning profile itself,
+#   so this ONE file works unchanged for every game once that game's own
+#   profile secret is saved in its repo. Nothing is hard-coded per game.
+#
+# GAMES 2-100: each game needs its OWN App Store provisioning profile for
+# its OWN Bundle ID before this workflow can run for it (see
+# PROFILE_NEEDS_99.md). The .p12, API key and issuer are shared; only the
+# profile secret differs per repo.
+#
+# DOES: build the signed .ipa AND upload it to TestFlight (App Store
+# Connect) with `xcrun altool` using the same App Store Connect API key.
+# It does NOT submit anything for App Store review or release anything.
+# TestFlight group / tester invitation is done afterwards in App Store
+# Connect (first external build needs Beta App Review before the invite
+# can go out).
+
+name: iOS build (signed IPA)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-signed-ipa:
+    runs-on: macos-latest
+    env:
+      KEYCHAIN_NAME: signing_temp.keychain
+      KEYCHAIN_PASSWORD: ${{ secrets.APPLE_DISTRIBUTION_P12_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check all signing secrets are present (fail loudly if not)
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for s in APPLE_DISTRIBUTION_CER APPLE_DISTRIBUTION_KEY APPLE_DISTRIBUTION_P12_PASSWORD APPLE_PROVISIONING_PROFILE APP_STORE_CONNECT_API_KEY_ID APP_STORE_CONNECT_API_KEY_P8 APP_STORE_CONNECT_ISSUER_ID; do
+            if [ -z "${!s:-}" ]; then missing+=("$s"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required signing secret(s): ${missing[*]}"
+            echo "Save the missing secret(s) in this repo (Settings > Secrets and variables > Actions) and re-run."
+            exit 1
+          fi
+          echo "All 7 signing secrets are present (names only — values are never printed)."
+        env:
+          APPLE_DISTRIBUTION_CER: ${{ secrets.APPLE_DISTRIBUTION_CER }}
+          APPLE_DISTRIBUTION_KEY: ${{ secrets.APPLE_DISTRIBUTION_KEY }}
+          APPLE_DISTRIBUTION_P12_PASSWORD: ${{ secrets.APPLE_DISTRIBUTION_P12_PASSWORD }}
+          APPLE_PROVISIONING_PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+
+      - name: Decode signing files (profile, certificate, API key)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/signing" ~/private_keys ~/Library/MobileDevice/"Provisioning Profiles"
+          echo "$APPLE_DISTRIBUTION_CER" | base64 --decode > "$RUNNER_TEMP/signing/certificate.cer"
+          echo "$APPLE_DISTRIBUTION_KEY" | base64 --decode > "$RUNNER_TEMP/signing/private.key"
+          chmod 600 "$RUNNER_TEMP/signing/private.key"
+          # Build the .p12 ON THE RUNNER from the .cer + private key + the
+          # password Wajiha typed into the GitHub secret (never in a browser).
+          # The .cer is DER, so convert it to PEM first — openssl pkcs12
+          # will not read a DER certificate directly.
+          # -legacy is REQUIRED: OpenSSL 3's default PKCS#12 (AES-256 +
+          # PBKDF2) is rejected by macOS `security import` with "MAC
+          # verification failed during PKCS12 import (wrong password?)" even
+          # when the password is right (run #7, 9 Nov 2026). The legacy
+          # 3DES/SHA-1 format is what macOS accepts.
+          openssl x509 -inform DER -in "$RUNNER_TEMP/signing/certificate.cer" \
+            -out "$RUNNER_TEMP/signing/certificate.pem"
+          openssl pkcs12 -export -legacy \
+            -in "$RUNNER_TEMP/signing/certificate.pem" \
+            -inkey "$RUNNER_TEMP/signing/private.key" \
+            -out "$RUNNER_TEMP/signing/certificate.p12" \
+            -passout pass:"$APPLE_DISTRIBUTION_P12_PASSWORD"
+          echo "$APPLE_PROVISIONING_PROFILE" | base64 --decode > "$RUNNER_TEMP/signing/profile.mobileprovision"
+          echo "$APP_STORE_CONNECT_API_KEY_P8" | base64 --decode > "$HOME/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          chmod 600 "$HOME/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          # Read team, profile name, UUID and Bundle ID out of the profile itself.
+          python3 - "$RUNNER_TEMP/signing/profile.mobileprovision" <<'PYEOF'
+          import plistlib, shlex, subprocess, sys
+          raw = subprocess.run(
+              ["security", "cms", "-D", "-i", sys.argv[1]],
+              capture_output=True, check=True).stdout
+          d = plistlib.loads(raw)
+          team = d["TeamIdentifier"][0]
+          name = d["Name"]
+          uuid = d["UUID"]
+          app_id = d["Entitlements"]["application-identifier"]  # "<TeamID>.<bundle-id>"
+          bundle_id = app_id.split(".", 1)[1]
+          # shlex.quote every value: profile names contain spaces
+          # ("Ludo App Store Profile") and an unquoted write makes
+          # `source signing-info.env` fail with "App: command not found".
+          with open("signing-info.env", "w") as f:
+              f.write(f"TEAM_ID={shlex.quote(team)}\nPROFILE_NAME={shlex.quote(name)}\nPROFILE_UUID={shlex.quote(uuid)}\nBUNDLE_ID={shlex.quote(bundle_id)}\n")
+          print(f"Profile: {name} | Team: {team} | Bundle ID: {bundle_id} | UUID: {uuid}")
+          PYEOF
+          # shellcheck disable=SC1091
+          source signing-info.env
+          cp "$RUNNER_TEMP/signing/profile.mobileprovision" \
+             "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          echo "Signing files decoded and profile installed."
+        env:
+          APPLE_DISTRIBUTION_CER: ${{ secrets.APPLE_DISTRIBUTION_CER }}
+          APPLE_DISTRIBUTION_KEY: ${{ secrets.APPLE_DISTRIBUTION_KEY }}
+          APPLE_DISTRIBUTION_P12_PASSWORD: ${{ secrets.APPLE_DISTRIBUTION_P12_PASSWORD }}
+          APPLE_PROVISIONING_PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+          APP_STORE_CONNECT_API_KEY_P8: ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+
+      - name: Verify profile Bundle ID matches this project
+        shell: bash
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC1091
+          source signing-info.env
+          project_id=$(grep -m1 'PRODUCT_BUNDLE_IDENTIFIER = ' ios/Runner.xcodeproj/project.pbxproj \
+            | sed -E 's/.*= ([^;]+);/\1/' | tr -d ' ')
+          echo "Profile Bundle ID: $BUNDLE_ID"
+          echo "Project Bundle ID: $project_id"
+          if [ "$BUNDLE_ID" != "$project_id" ]; then
+            echo "::error::Provisioning profile is for $BUNDLE_ID but this project is $project_id. Save the correct profile secret for this game."
+            exit 1
+          fi
+
+      - name: Import distribution certificate into a temporary keychain
+        shell: bash
+        run: |
+          set -euo pipefail
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_NAME"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
+          security import "$RUNNER_TEMP/signing/certificate.p12" \
+            -k "$KEYCHAIN_NAME" -P "$KEYCHAIN_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_NAME"
+          security list-keychains -d user -s "$KEYCHAIN_NAME" login.keychain-db
+          # The identity name depends on how the certificate was created:
+          # portal iOS Distribution certificates are named "iPhone
+          # Distribution: ..." while Xcode-made ones are "Apple
+          # Distribution: ...". Grep for "Distribution" (either form) and
+          # use the identity's SHA-1 hash for signing, so the name never
+          # has to be guessed (run #8, 9 Nov 2026: grep for "Apple
+          # Distribution" could never match the new "iPhone Distribution"
+          # certificate even though it had imported fine).
+          security find-identity -v -p codesigning "$KEYCHAIN_NAME" | grep -i "Distribution" \
+            || { echo "::error::No Distribution identity found in the imported .p12."; exit 1; }
+          IDENTITY_SHA=$(security find-identity -v -p codesigning "$KEYCHAIN_NAME" | grep -i "Distribution" | head -n1 | awk '{print $2}')
+          echo "IDENTITY_SHA=$IDENTITY_SHA" >> signing-info.env
+          echo "Distribution certificate imported (identity $IDENTITY_SHA)."
+
+      - name: Generate ExportOptions.plist from the profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC1091
+          source signing-info.env
+          cat > ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>teamID</key><string>${TEAM_ID}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${BUNDLE_ID}</key><string>${PROFILE_NAME}</string>
+            </dict>
+            <key>stripSwiftSymbols</key><true/>
+          </dict>
+          </plist>
+          EOF
+          echo "ExportOptions.plist written for $BUNDLE_ID with profile '$PROFILE_NAME'."
+
+      - name: Scope provisioning profile to the Runner target only
+        shell: bash
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC1091
+          source signing-info.env
+          # Run #9 (9 Nov 2026) failed in the archive step: the workflow
+          # passed PROVISIONING_PROFILE_SPECIFIER as a global xcodebuild
+          # override, and Xcode applied it to EVERY target — including
+          # Swift Package Manager package targets (share_plus, url_launcher,
+          # in_app_purchase_storekit, ...), which do not support provisioning
+          # profiles ("does not support provisioning profiles", exit 65).
+          # Fix: write the specifier into the Runner target's own Release
+          # and Profile build settings in project.pbxproj (the configs whose
+          # PRODUCT_BUNDLE_IDENTIFIER is exactly this game's Bundle ID), and
+          # do NOT pass it as a global override at archive time. The global
+          # CODE_SIGN_STYLE / DEVELOPMENT_TEAM / CODE_SIGN_IDENTITY overrides
+          # stay — only the profile specifier breaks package targets.
+          # NOTE (run #10, 9 Nov 2026): `source signing-info.env` sets
+          # ordinary shell variables, which are NOT exported to child
+          # processes — so Python's os.environ has no BUNDLE_ID (KeyError).
+          # Pass the values as command-line arguments instead, never via
+          # the environment.
+          python3 - "$BUNDLE_ID" "$PROFILE_NAME" ios/Runner.xcodeproj/project.pbxproj <<'PYEOF'
+          import re, sys
+          bundle, profile, p = sys.argv[1], sys.argv[2], sys.argv[3]
+          s = open(p).read()
+          pat = re.compile(r'(\t\t[0-9A-F]{24} /\* (?:Release|Profile) \*/ = \{\n\t\t\tisa = XCBuildConfiguration;\n\t\t\tbaseConfigurationReference = [^;]+;\n\t\t\tbuildSettings = \{.*?\n\t\t\t\};\n\t\t\tname = (?:Release|Profile);\n\t\t\};)', re.S)
+          count = [0]
+          def repl(m):
+              block = m.group(1)
+              if f'PRODUCT_BUNDLE_IDENTIFIER = {bundle};' in block and 'PROVISIONING_PROFILE_SPECIFIER' not in block:
+                  count[0] += 1
+                  return block.replace(f'PRODUCT_BUNDLE_IDENTIFIER = {bundle};',
+                      f'PRODUCT_BUNDLE_IDENTIFIER = {bundle};\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "{profile}";', 1)
+              return block
+          s2 = pat.sub(repl, s)
+          if count[0] == 0:
+              print('::error::Could not find the Runner Release/Profile build settings to scope the provisioning profile.')
+              sys.exit(1)
+          open(p, 'w').write(s2)
+          print(f'Provisioning profile scoped to Runner target in {count[0]} build configuration(s).')
+          PYEOF
+          grep -c 'PROVISIONING_PROFILE_SPECIFIER' ios/Runner.xcodeproj/project.pbxproj
+
+      - name: Build Flutter artefacts (unsigned), then signed archive + IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC1091
+          source signing-info.env
+          flutter build ios --release --no-codesign
+          xcodebuild -workspace ios/Runner.xcworkspace \
+            -scheme Runner -configuration Release \
+            -archivePath build/Runner.xcarchive archive \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CODE_SIGN_IDENTITY="$IDENTITY_SHA"
+          xcodebuild -exportArchive \
+            -archivePath build/Runner.xcarchive \
+            -exportPath build/ios/ipa \
+            -exportOptionsPlist ExportOptions.plist \
+            -authenticationKeyPath "$HOME/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8" \
+            -authenticationKeyID "${APP_STORE_CONNECT_API_KEY_ID}" \
+            -authenticationKeyIssuerID "${APP_STORE_CONNECT_ISSUER_ID}"
+          ls -lh build/ios/ipa/
+          test -n "$(ls build/ios/ipa/*.ipa 2>/dev/null)" \
+            || { echo "::error::No .ipa was produced by the export step."; exit 1; }
+          echo "Signed .ipa produced."
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+
+      - name: Upload signed IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-ipa
+          path: build/ios/ipa/*.ipa
+          if-no-files-found: error
+
+      - name: Upload signed IPA to TestFlight
+        shell: bash
+        run: |
+          set -euo pipefail
+          # altool looks for AuthKey_<key-id>.p8 in the current directory,
+          # so run it from the folder the decode step installed it in.
+          IPA=$(ls build/ios/ipa/*.ipa | head -n1)
+          echo "Uploading $IPA to TestFlight..."
+          cd "$HOME/private_keys"
+          xcrun altool --upload-app -f "$GITHUB_WORKSPACE/$IPA" -t ios \
+            --apiKey "$APP_STORE_CONNECT_API_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
+          echo "IPA uploaded to App Store Connect (TestFlight processing starts now)."
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+
+      - name: Clean up signing keychain
+        if: always()
+        shell: bash
+        run: |
+          security delete-keychain "$KEYCHAIN_NAME" || true
+          rm -f "$RUNNER_TEMP/signing/certificate.p12" "$RUNNER_TEMP/signing/certificate.cer" "$RUNNER_TEMP/signing/private.key" signing-info.env ExportOptions.plist || true
