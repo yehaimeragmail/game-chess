@@ -46,3 +46,8 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Signing secrets — NEVER commit (added 2026-11-08, signed IPA prep)
+*.p12
+*.mobileprovision
+AuthKey_*.p8
