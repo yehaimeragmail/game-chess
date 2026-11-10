@@ -3,6 +3,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:in_app_review/in_app_review.dart';
@@ -258,19 +259,22 @@ class _MenuScreenState extends State<MenuScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    TextButton.icon(
-                      onPressed: () {
-                        widget.audio.click();
-                        _supportDialog(tt);
-                      },
-                      icon: Icon(Icons.coffee,
-                          color: tt.accent, size: 18),
-                      label: Text(
-                        'Support the club',
-                        style: TextStyle(color: tt.accent, fontSize: 14),
+                    // Tips are Android-only: hidden on iOS (App Store).
+                    if (defaultTargetPlatform != TargetPlatform.iOS) ...[
+                      const SizedBox(height: 12),
+                      TextButton.icon(
+                        onPressed: () {
+                          widget.audio.click();
+                          _supportDialog(tt);
+                        },
+                        icon: Icon(Icons.coffee,
+                            color: tt.accent, size: 18),
+                        label: Text(
+                          'Support the club',
+                          style: TextStyle(color: tt.accent, fontSize: 14),
+                        ),
                       ),
-                    ),
+                    ],
                     const SizedBox(height: 8),
                     Text(
                       settings.isPro

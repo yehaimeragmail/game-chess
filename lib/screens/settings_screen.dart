@@ -4,6 +4,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../services/audio_service.dart';
 import '../services/settings_service.dart';
 import '../theme.dart';
@@ -165,17 +166,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
-                _sectionTitle(tt, 'Support the club'),
-                const SizedBox(height: 8),
-                WalnutCard(
-                  theme: tt,
-                  child: TipJarCard(
-                    audio: widget.audio,
+                // Tips are Android-only: hidden on iOS (App Store).
+                if (defaultTargetPlatform != TargetPlatform.iOS) ...[
+                  const SizedBox(height: 16),
+                  _sectionTitle(tt, 'Support the club'),
+                  const SizedBox(height: 8),
+                  WalnutCard(
                     theme: tt,
-                    onClose: () {},
+                    child: TipJarCard(
+                      audio: widget.audio,
+                      theme: tt,
+                      onClose: () {},
+                    ),
                   ),
-                ),
+                ],
                 const SizedBox(height: 16),
                 _sectionTitle(tt, 'How to play'),
                 const SizedBox(height: 8),
