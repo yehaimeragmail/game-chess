@@ -278,8 +278,8 @@ class _MenuScreenState extends State<MenuScreen> {
                     const SizedBox(height: 8),
                     Text(
                       settings.isPro
-                          ? '✦ PRO · by Wajiha'
-                          : 'Free forever · by Wajiha',
+                          ? '✦ PRO'
+                          : 'Free forever',
                       style: ChessType.bodyDim(tt).copyWith(fontSize: 11),
                     ),
                   ],
@@ -336,7 +336,7 @@ class _MenuScreenState extends State<MenuScreen> {
   Future<void> _shareGame() async {
     widget.audio.click();
     await Share.share(
-        'Play Chess with me! https://play.google.com/store/apps/details?id=com.gameswajiha.chess');
+        'Play Chess with me! https://apps.apple.com/app/id6830152948');
   }
 
   /// Real in-app review flow, with a store-listing fallback when the

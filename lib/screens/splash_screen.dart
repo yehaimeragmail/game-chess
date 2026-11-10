@@ -1,6 +1,5 @@
-/// Launch splash: WAJIHA company moment → game splash with logo,
-/// animated loading line, and credits. Audio is prewarmed during the
-/// company splash so menu music starts reliably.
+/// Launch splash: game logo + name + animated loading line.
+/// Audio is prewarmed during the splash so menu music starts reliably.
 library;
 
 import 'package:flutter/material.dart';
@@ -22,7 +21,6 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _loader;
-  bool _companyDone = false;
 
   @override
   void initState() {
@@ -35,11 +33,10 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _run() async {
-    // Pre-warm audio while the company splash shows.
+    // Pre-warm audio while the splash shows.
     widget.audio.prewarm();
     await Future.delayed(const Duration(milliseconds: 1300));
     if (!mounted) return;
-    setState(() => _companyDone = true);
     widget.audio.startMenuMusic();
     _loader.forward();
     await Future.delayed(const Duration(milliseconds: 1900));
@@ -65,60 +62,19 @@ class _SplashScreenState extends State<SplashScreen>
     final theme = ChessThemes.byId(widget.settings.themeId);
     return Scaffold(
       backgroundColor: Colors.black,
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 450),
-        child: _companyDone
-            ? _GameSplash(
-                key: const ValueKey('game'),
-                theme: theme,
-                loader: _loader,
-              )
-            : _CompanySplash(key: const ValueKey('company')),
+      body: _GameSplash(
+        theme: theme,
+        loader: _loader,
       ),
     );
   }
 }
 
-/// Brief company splash moment with the official WAJIHA logo (untouched).
-class _CompanySplash extends StatelessWidget {
-  const _CompanySplash({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: const ValueKey('company'),
-      color: Colors.black,
-      alignment: Alignment.center,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Image.asset(
-            'assets/wajiha_logo.png',
-            width: 190,
-            height: 190,
-            fit: BoxFit.contain,
-          ),
-          const SizedBox(height: 18),
-          const Text(
-            'WAJIHA',
-            style: TextStyle(
-              fontSize: 34,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 10,
-              color: Color(0xFFE8ECF5),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Game splash: logo + name + animated loading line + credits.
+/// Game splash: logo + name + animated loading line.
 class _GameSplash extends StatelessWidget {
   final ChessThemeDef theme;
   final AnimationController loader;
-  const _GameSplash({super.key, required this.theme, required this.loader});
+  const _GameSplash({required this.theme, required this.loader});
 
   @override
   Widget build(BuildContext context) {
@@ -194,27 +150,6 @@ class _GameSplash extends StatelessWidget {
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 44),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Image.asset(
-                  'assets/wajiha_logo.png',
-                  width: 30,
-                  height: 30,
-                  fit: BoxFit.contain,
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  'Credits: WAJIHA',
-                  style: ChessType.bodyDim(t).copyWith(
-                    letterSpacing: 1.6,
-                    color: t.accent,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
             ),
           ],
         ),

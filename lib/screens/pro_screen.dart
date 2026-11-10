@@ -1,10 +1,12 @@
 /// Chess PRO: Free-vs-Pro comparison, real purchase, restore, and tip jar.
 /// All prices come from the store — never hardcoded, never placeholders.
 ///
-/// Product IDs (created by Wajiha in Play Console):
+/// Product IDs (created in Play Console):
 /// - `chesspro` — one-time non-consumable PRO unlock.
 /// - `chesscoffee`, `chesschocolate` — consumable tips.
 library;
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -40,6 +42,11 @@ class _ProScreenState extends State<ProScreen> {
     super.initState();
     _store.init().then((_) {
       if (mounted) setState(() => _loading = false);
+    });
+    // Hardening: never spin the loading state forever if the store
+    // sheet/query stalls (seen on iOS as a stuck blank StoreKit sheet).
+    Future.delayed(const Duration(seconds: 8), () {
+      if (mounted && _loading) setState(() => _loading = false);
     });
     _store.proPurchased.addListener(_onPro);
     _store.lastThanks.addListener(_onThanks);
