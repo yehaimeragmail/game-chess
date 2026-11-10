@@ -9,8 +9,10 @@
 ///   where it left off instead of restarting or dying.
 /// - Every public method catches player errors; audio can never crash the app.
 /// - Call [prewarm] on the splash screen so the first note is instant.
+/// Clips play from real temp .wav files: iOS does NOT implement BytesSource.
 library;
 
+import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:audioplayers/audioplayers.dart';
@@ -26,6 +28,44 @@ class ChessAudio {
   double volume = 0.8;
 
   final Map<String, Uint8List> _cache = {};
+  // Synthesized clips written out as real .wav files (see _writeFile):
+  // iOS (audioplayers_darwin) does NOT implement BytesSource, so every
+  // BytesSource play fails silently on iOS while Android plays it fine.
+  // Files played via DeviceFileSource work on both platforms.
+  final Map<String, String> _fileCache = {};
+  Directory? _audioDir;
+
+  Future<Directory> _tempDir() async =>
+      _audioDir ??= await Directory.systemTemp.createTemp('chess_audio');
+
+  /// Write synthesized bytes to a temp .wav file once, return its path.
+  Future<String> _writeFile(String key, Uint8List bytes) async {
+    final existing = _fileCache[key];
+    if (existing != null) return existing;
+    final file = File('${(await _tempDir()).path}/$key.wav');
+    await file.writeAsBytes(bytes, flush: true);
+    _fileCache[key] = file.path;
+    return file.path;
+  }
+
+  Future<String> _clipFile(String key, List<double> Function() build) async =>
+      _writeFile(key, _clip(key, build));
+
+  /// iOS audio session: playback category so sounds play even with the
+  /// silent switch on. Safe to call repeatedly; errors are swallowed.
+  Future<void> _configureSession() async {
+    try {
+      await AudioPlayer.global.setAudioContext(
+        AudioContext(
+          iOS: AudioContextIOS(
+            category: AVAudioSessionCategory.playback,
+            options: {AVAudioSessionOptions.mixWithOthers},
+          ),
+        ),
+      );
+    } catch (_) {}
+  }
+
 
   bool _musicBusy = false;
   String? _currentTrack; // 'menu' | 'game' | null
@@ -34,6 +74,7 @@ class ChessAudio {
 
   ChessAudio() {
     _music.setReleaseMode(ReleaseMode.loop);
+    _configureSession();
   }
 
   void configure(
@@ -42,6 +83,7 @@ class ChessAudio {
     this.sfxOn = sfxOn;
     volume = volume.clamp(0.0, 1.0);
     this.volume = volume;
+    _configureSession();
     _music.setVolume(musicOn ? volume * 0.55 : 0.0);
     _sfx.setVolume(sfxOn ? volume : 0.0);
     if (!musicOn) stopMusic();
@@ -51,8 +93,8 @@ class ChessAudio {
   Future<void> prewarm() async {
     if (_disposed) return;
     await Future(() {});
-    _menuBytes();
-    _gameBytes();
+    await _writeFile('music_menu', _menuBytes());
+    await _writeFile('music_game', _gameBytes());
   }
 
   // ---------------------------------------------------------- WAV synthesis
@@ -182,20 +224,20 @@ class ChessAudio {
       });
 
   // ------------------------------------------------------------------ SFX
-  Future<void> _play(Uint8List bytes) async {
+  Future<void> _play(String key, List<double> Function() build) async {
     if (!sfxOn || _disposed) return;
     try {
-      await _sfx.play(BytesSource(bytes));
+      await _sfx.play(DeviceFileSource(await _clipFile(key, build)));
     } catch (_) {}
   }
 
   /// Soft brass tick for UI.
-  Future<void> click() => _play(_clip('click', () => _tone(1250, 0.05)));
-  Future<void> select() => _play(_clip('select', () => _tone(880, 0.06)));
+  Future<void> click() => _play('click', () => _tone(1250, 0.05));
+  Future<void> select() => _play('select', () => _tone(880, 0.06));
   Future<void> invalid() =>
-      _play(_clip('invalid', () => _tone(150, 0.16, harmonics: 0.5)));
-  Future<void> move() => _play(_clip('move', () => _knock(base: 210)));
-  Future<void> capture() => _play(_clip('capture', () {
+      _play('invalid', () => _tone(150, 0.16, harmonics: 0.5));
+  Future<void> move() => _play('move', () => _knock(base: 210));
+  Future<void> capture() => _play('capture', () {
         final a = _knock(base: 190);
         final b = _tone(320, 0.2, freqEnd: 140);
         final out = List<double>.from(a);
@@ -208,10 +250,10 @@ class ChessAudio {
           }
         }
         return out;
-      }));
+      });
   Future<void> check() =>
-      _play(_clip('check', () => _tone(880, 0.3, freqEnd: 1320)));
-  Future<void> castle() => _play(_clip('castle', () {
+      _play('check', () => _tone(880, 0.3, freqEnd: 1320));
+  Future<void> castle() => _play('castle', () {
         final a = _knock(base: 210);
         final b = _knock(base: 240);
         final out = List<double>.from(a);
@@ -224,23 +266,24 @@ class ChessAudio {
           }
         }
         return out;
-      }));
-  Future<void> promote() => _play(_clip(
-      'promote', () => _arp([523.25, 659.25, 783.99, 1046.5], 0.14, 0.02)));
+      });
+  Future<void> promote() => _play('promote', () => _arp([523.25, 659.25, 783.99, 1046.5], 0.14, 0.02));
   Future<void> gameStart() =>
-      _play(_clip('start', () => _tone(330, 0.4, freqEnd: 660)));
-  Future<void> win() => _play(_clip(
-      'win', () => _arp([523.25, 659.25, 783.99, 1046.5, 1318.5], 0.16, 0.03)));
-  Future<void> lose() => _play(_clip(
-      'lose', () => _arp([392.0, 329.63, 261.63, 196.0], 0.22, 0.04)));
+      _play('start', () => _tone(330, 0.4, freqEnd: 660));
+  Future<void> win() => _play('win', () => _arp([523.25, 659.25, 783.99, 1046.5, 1318.5], 0.16, 0.03));
+  Future<void> lose() => _play('lose', () => _arp([392.0, 329.63, 261.63, 196.0], 0.22, 0.04));
   Future<void> draw() =>
-      _play(_clip('draw', () => _arp([440.0, 440.0], 0.25, 0.08)));
+      _play('draw', () => _arp([440.0, 440.0], 0.25, 0.08));
 
   // ----------------------------------------------------------------- music
   /// Start (or keep) a music track. Serialized: overlapping calls collapse
   /// into one, and re-requesting the current track is a no-op that ensures
   /// it is actually audible.
-  Future<void> _startTrack(String track, Uint8List Function() bytes) async {
+  Future<void> _startTrack(
+    String track,
+    String fileKey,
+    Uint8List Function() bytes,
+  ) async {
     if (!musicOn || _disposed) return;
     if (_musicBusy) return;
     if (_currentTrack == track) {
@@ -254,7 +297,7 @@ class ChessAudio {
       await _music.stop();
       _currentTrack = track;
       _pausedByLifecycle = false;
-      await _music.play(BytesSource(bytes()));
+      await _music.play(DeviceFileSource(await _writeFile(fileKey, bytes())));
     } catch (_) {
       _currentTrack = null;
     } finally {
@@ -262,8 +305,8 @@ class ChessAudio {
     }
   }
 
-  Future<void> startMenuMusic() => _startTrack('menu', _menuBytes);
-  Future<void> startGameMusic() => _startTrack('game', _gameBytes);
+  Future<void> startMenuMusic() => _startTrack('menu', 'music_menu', _menuBytes);
+  Future<void> startGameMusic() => _startTrack('game', 'music_game', _gameBytes);
 
   Future<void> stopMusic() async {
     if (_disposed) return;
@@ -309,6 +352,9 @@ class ChessAudio {
     try {
       await _sfx.dispose();
       await _music.dispose();
+    } catch (_) {}
+    try {
+      await _audioDir?.delete(recursive: true);
     } catch (_) {}
   }
 }

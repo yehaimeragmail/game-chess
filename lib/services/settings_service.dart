@@ -59,7 +59,20 @@ class ChessSettings extends ChangeNotifier {
 
   SharedPreferences? _prefs;
 
+  /// Loads persisted settings. If storage is unavailable (or a stored
+  /// value is unreadable), keeps the in-memory defaults and launches
+  /// anyway — the game must never crash on startup. Stays in-memory-only
+  /// for the session (no persistence) so partial defaults never overwrite
+  /// good stored data.
   Future<void> load() async {
+    try {
+      await _loadUnsafe();
+    } catch (_) {
+      _prefs = null;
+    }
+  }
+
+  Future<void> _loadUnsafe() async {
     _prefs = await SharedPreferences.getInstance();
     final p = _prefs!;
     musicOn = p.getBool(_kMusic) ?? true;
