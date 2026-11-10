@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:in_app_review/in_app_review.dart';
+
 import '../services/audio_service.dart';
 import '../services/iap_service.dart';
 import '../services/settings_service.dart';
@@ -56,11 +57,9 @@ class _MenuScreenState extends State<MenuScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Resume game?',
-                  style: ChessType.display(t, size: 24)),
+              Text('Resume game?', style: ChessType.display(t, size: 24)),
               const SizedBox(height: 8),
-              Text('You have an unfinished game.',
-                  style: ChessType.bodyDim(t)),
+              Text('You have an unfinished game.', style: ChessType.bodyDim(t)),
               const SizedBox(height: 18),
               BrassButton(
                 theme: t,
@@ -111,8 +110,9 @@ class _MenuScreenState extends State<MenuScreen> {
     final settings = widget.settings;
     final clockLabel = settings.clockSeconds == 0
         ? 'no clock'
-        : ChessSettings.clockLabels[
-            ChessSettings.clockOptions.indexOf(settings.clockSeconds)];
+        : ChessSettings.clockLabels[ChessSettings.clockOptions.indexOf(
+            settings.clockSeconds,
+          )];
     return ListenableBuilder(
       listenable: settings,
       builder: (_, _) {
@@ -120,170 +120,174 @@ class _MenuScreenState extends State<MenuScreen> {
         return Scaffold(
           backgroundColor: tt.bg,
           body: SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // hero: the club emblem
-                    Container(
-                      width: 128,
-                      height: 128,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: tt.accent, width: 2.5),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.6),
-                            offset: const Offset(0, 8),
-                            blurRadius: 20,
-                          ),
-                        ],
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: Image.asset('assets/chess_logo.png',
-                          fit: BoxFit.cover),
-                    ),
-                    const SizedBox(height: 14),
-                    Text('CHESS', style: ChessType.display(tt, size: 44)),
-                    const SizedBox(height: 4),
-                    Text(
-                      'The royal game, in marble & brass',
-                      style: ChessType.bodyDim(tt),
-                    ),
-                    const SizedBox(height: 10),
-                    // lifetime score plaque
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: tt.surface,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: tt.line, width: 1),
-                      ),
-                      child: Text(
-                        'Club record  ${settings.wins} W · ${settings.losses} L · ${settings.draws} D',
-                        style: ChessType.moveNotation(tt).copyWith(
-                            color: tt.accent, fontSize: 12),
-                      ),
-                    ),
-                    const SizedBox(height: 26),
-                    BrassButton(
-                      theme: tt,
-                      label: 'Play vs Computer',
-                      icon: Icons.computer,
-                      onTap: () {
-                        settings.setMode(0);
-                        _openGame();
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    BrassButton(
-                      theme: tt,
-                      label: 'Two Players',
-                      icon: Icons.people,
-                      onTap: () {
-                        settings.setMode(1);
-                        _openGame();
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    BrassButton(
-                      theme: tt,
-                      label: 'Settings',
-                      icon: Icons.settings,
-                      onTap: () async {
-                        widget.audio.click();
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => SettingsScreen(
-                              audio: widget.audio,
-                              settings: settings,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    BrassButton(
-                      theme: tt,
-                      label: settings.isPro ? 'Chess PRO ✓' : 'Chess PRO',
-                      icon: Icons.workspace_premium,
-                      onTap: () {
-                        widget.audio.click();
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ProScreen(
-                              audio: widget.audio,
-                              settings: settings,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    // mode summary chips
-                    Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _chip(tt,
-                            '${ChessSettings.difficultyLabels[settings.difficulty]} bot'),
-                        _chip(tt,
-                            settings.botPlaysWhite ? 'You play Black' : 'You play White'),
-                        _chip(tt, clockLabel),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    // share + rate row
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        _menuMiniButton(
-                          tt,
-                          icon: Icons.share,
-                          label: 'Share',
-                          onTap: _shareGame,
-                        ),
-                        const SizedBox(width: 12),
-                        _menuMiniButton(
-                          tt,
-                          icon: Icons.star,
-                          label: 'Rate',
-                          onTap: _rateGame,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // hero: the club emblem
+                  Container(
+                    width: 128,
+                    height: 128,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: tt.accent, width: 2.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.6),
+                          offset: const Offset(0, 8),
+                          blurRadius: 20,
                         ),
                       ],
                     ),
-                    // Tips are Android-only: hidden on iOS (App Store).
-                    if (defaultTargetPlatform != TargetPlatform.iOS) ...[
-                      const SizedBox(height: 12),
-                      TextButton.icon(
-                        onPressed: () {
-                          widget.audio.click();
-                          _supportDialog(tt);
-                        },
-                        icon: Icon(Icons.coffee,
-                            color: tt.accent, size: 18),
-                        label: Text(
-                          'Support the club',
-                          style: TextStyle(color: tt.accent, fontSize: 14),
+                    clipBehavior: Clip.antiAlias,
+                    child: Image.asset(
+                      'assets/chess_logo.png',
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text('CHESS', style: ChessType.display(tt, size: 44)),
+                  const SizedBox(height: 4),
+                  Text(
+                    'The royal game, in marble & brass',
+                    style: ChessType.bodyDim(tt),
+                  ),
+                  const SizedBox(height: 10),
+                  // lifetime score plaque
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: tt.surface,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: tt.line, width: 1),
+                    ),
+                    child: Text(
+                      'Club record  ${settings.wins} W · ${settings.losses} L · ${settings.draws} D',
+                      style: ChessType.moveNotation(tt)
+                          .copyWith(color: tt.accent, fontSize: 12),
+                    ),
+                  ),
+                  const SizedBox(height: 26),
+                  BrassButton(
+                    theme: tt,
+                    label: 'Play vs Computer',
+                    icon: Icons.computer,
+                    onTap: () {
+                      settings.setMode(0);
+                      _openGame();
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  BrassButton(
+                    theme: tt,
+                    label: 'Two Players',
+                    icon: Icons.people,
+                    onTap: () {
+                      settings.setMode(1);
+                      _openGame();
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  BrassButton(
+                    theme: tt,
+                    label: 'Settings',
+                    icon: Icons.settings,
+                    onTap: () async {
+                      widget.audio.click();
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => SettingsScreen(
+                            audio: widget.audio,
+                            settings: settings,
+                          ),
                         ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  BrassButton(
+                    theme: tt,
+                    label: settings.isPro ? 'Chess PRO ✓' : 'Chess PRO',
+                    icon: Icons.workspace_premium,
+                    onTap: () {
+                      widget.audio.click();
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ProScreen(
+                            audio: widget.audio,
+                            settings: settings,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  // mode summary chips
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _chip(
+                        tt,
+                        '${ChessSettings.difficultyLabels[settings.difficulty]} bot',
+                      ),
+                      _chip(
+                        tt,
+                        settings.botPlaysWhite
+                            ? 'You play Black'
+                            : 'You play White',
+                      ),
+                      _chip(tt, clockLabel),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  // share + rate row
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _menuMiniButton(
+                        tt,
+                        icon: Icons.share,
+                        label: 'Share',
+                        onTap: _shareGame,
+                      ),
+                      const SizedBox(width: 12),
+                      _menuMiniButton(
+                        tt,
+                        icon: Icons.star,
+                        label: 'Rate',
+                        onTap: _rateGame,
                       ),
                     ],
-                    const SizedBox(height: 8),
-                    Text(
-                      settings.isPro
-                          ? '✦ PRO'
-                          : 'Free forever',
-                      style: ChessType.bodyDim(tt).copyWith(fontSize: 11),
+                  ),
+                  // Tips are Android-only: hidden on iOS (App Store).
+                  if (defaultTargetPlatform != TargetPlatform.iOS) ...[
+                    const SizedBox(height: 12),
+                    TextButton.icon(
+                      onPressed: () {
+                        widget.audio.click();
+                        _supportDialog(tt);
+                      },
+                      icon: Icon(Icons.coffee, color: tt.accent, size: 18),
+                      label: Text(
+                        'Support the club',
+                        style: TextStyle(color: tt.accent, fontSize: 14),
+                      ),
                     ),
                   ],
-                ),
+                  const SizedBox(height: 8),
+                  Text(
+                    settings.isPro ? '✦ PRO' : 'Free forever',
+                    style: ChessType.bodyDim(tt).copyWith(fontSize: 11),
+                  ),
+                ],
               ),
             ),
           ),
@@ -293,15 +297,14 @@ class _MenuScreenState extends State<MenuScreen> {
   }
 
   Widget _chip(ChessThemeDef t, String label) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: t.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: t.line),
-        ),
-        child: Text(label,
-            style: ChessType.bodyDim(t).copyWith(fontSize: 11)),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+    decoration: BoxDecoration(
+      color: t.surface,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: t.line),
+    ),
+    child: Text(label, style: ChessType.bodyDim(t).copyWith(fontSize: 11)),
+  );
 
   Widget _menuMiniButton(
     ChessThemeDef t, {
@@ -312,8 +315,7 @@ class _MenuScreenState extends State<MenuScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
         decoration: BoxDecoration(
           color: t.surface,
           borderRadius: BorderRadius.circular(20),
@@ -324,8 +326,7 @@ class _MenuScreenState extends State<MenuScreen> {
           children: [
             Icon(icon, color: t.accent, size: 16),
             const SizedBox(width: 8),
-            Text(label,
-                style: ChessType.bodyDim(t).copyWith(fontSize: 13)),
+            Text(label, style: ChessType.bodyDim(t).copyWith(fontSize: 13)),
           ],
         ),
       ),
@@ -336,7 +337,8 @@ class _MenuScreenState extends State<MenuScreen> {
   Future<void> _shareGame() async {
     widget.audio.click();
     await Share.share(
-        'Play Chess with me! https://apps.apple.com/app/id6830152948');
+      'Play Chess with me! https://apps.apple.com/app/id6830152948',
+    );
   }
 
   /// Real in-app review flow, with a store-listing fallback when the
@@ -436,8 +438,7 @@ class _TipJarCardState extends State<TipJarCard> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('Support the club',
-            style: ChessType.display(t, size: 24)),
+        Text('Support the club', style: ChessType.display(t, size: 24)),
         const SizedBox(height: 8),
         Text(
           'Chess is free forever. If the club has given you good games, '
