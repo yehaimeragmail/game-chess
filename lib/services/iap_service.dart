@@ -1,6 +1,6 @@
 /// Real Play Billing store for Chess: Pro unlock + tip jar.
 ///
-/// Product IDs (Wajiha creates these in Play Console — game name in the ID,
+/// Product IDs (created in Play Console — game name in the ID,
 /// no dots, no underscores):
 /// - `chesspro` — one-time NON-CONSUMABLE: unlocks Chess PRO forever.
 /// - `chesscoffee` — CONSUMABLE tip.
@@ -20,6 +20,8 @@ class StoreService {
   static const coffeeId = 'chesscoffee';
   static const chocolateId = 'chesschocolate';
   static const productIds = {proId, coffeeId, chocolateId};
+  static Set<String> productIdsFor(TargetPlatform p) =>
+      p == TargetPlatform.iOS ? {proId} : productIds;
 
   final InAppPurchase _iap = InAppPurchase.instance;
 
@@ -61,17 +63,12 @@ class StoreService {
         onError: (_) {},
         cancelOnError: false,
       );
-      final resp = await _iap.queryProductDetails(productIds);
+      final resp = await _iap.queryProductDetails(productIdsFor(defaultTargetPlatform));
       if (resp.error != null) {
         error = 'Could not reach the store';
         return;
       }
       products = resp.productDetails;
-      if (resp.notFoundIDs.isNotEmpty) {
-        // Products not created in Play Console yet — normal before launch.
-        error = 'Available after store setup';
-        return;
-      }
       storeReady = products.isNotEmpty;
       if (!storeReady) error = 'Available after store setup';
     } catch (_) {
