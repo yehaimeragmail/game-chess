@@ -104,8 +104,16 @@ abstract class ChessMaterials {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
+          // Pressed and unpressed MUST have the same number of colours as
+          // stops (3). The pressed gradient used to have only 2 colours
+          // with 3 stops: pressing any BrassButton then threw inside
+          // Gradient.lerp during the 90ms press animation, the button was
+          // replaced by Flutter's grey RenderErrorBox (100000pt tall in a
+          // scroll view), and the whole lower menu turned grey. That was
+          // the iOS menu grey box (Nov 2026). Pressed is the same gradient,
+          // uniformly darker.
           colors: pressed
-              ? [t.accentDark, t.accent]
+              ? [t.accent, t.accentDark, t.accentDark]
               : [t.accentLight, t.accent, t.accentDark],
           stops: const [0.0, 0.55, 1.0],
         ),
